@@ -1,4 +1,4 @@
-<?php
+<?php /** @noinspection PhpUnused */
 
 /**
  * WordPress Query API
@@ -331,7 +331,7 @@ function is_comment_feed() {
  * If you set a static page for the front page of your site, this function will return
  * true when viewing that page.
  *
- * Otherwise the same as @see is_home()
+ * Otherwise, the same as @see is_home()
  *
  * For more information on this and similar theme functions, check out
  * the {@link https://developer.wordpress.org/themes/basics/conditional-tags/
@@ -798,4 +798,53 @@ function is_main_query() {
     }
 
     return $wp_query->is_main_query();
+}
+
+/**
+ * Retrieves the value of a query variable in the WP_Query class.
+ *
+ * @since 1.5.0
+ * @since 3.9.0 The `$default` argument was introduced.
+ *
+ * @global WP_Query $wp_query WordPress Query object.
+ *
+ * @param string $var       The variable key to retrieve.
+ * @param mixed  $default   Optional. Value to return if the query variable is not set. Default empty.
+ * @return mixed Contents of the query variable.
+ */
+function get_query_var( $var, $default = '' ) {
+    global $wp_query;
+    return $wp_query->get( $var, $default );
+}
+
+/**
+ * Retrieves the currently queried object.
+ *
+ * Wrapper for WP_Query::get_queried_object().
+ *
+ * @since 3.1.0
+ *
+ * @global WP_Query $wp_query WordPress Query object.
+ *
+ * @return WP_Term|WP_Post_Type|WP_Post|WP_User|null The queried object.
+ */
+function get_queried_object() {
+    global $wp_query;
+    return $wp_query->get_queried_object();
+}
+
+/**
+ * Retrieves the ID of the currently queried object.
+ *
+ * Wrapper for WP_Query::get_queried_object_id().
+ *
+ * @since 3.1.0
+ *
+ * @global WP_Query $wp_query WordPress Query object.
+ *
+ * @return int ID of the queried object.
+ */
+function get_queried_object_id() {
+    global $wp_query;
+    return $wp_query->get_queried_object_id();
 }

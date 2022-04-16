@@ -1,4 +1,9 @@
-<?php /** @noinspection SqlNoDataSourceInspection */
+<?php /** @noinspection GrazieInspection */
+/** @noinspection SpellCheckingInspection */
+/** @noinspection PhpUnused */
+/** @noinspection PhpRedundantOptionalArgumentInspection */
+/** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
+/** @noinspection SqlNoDataSourceInspection */
 /**
  * Option API
  *
@@ -512,6 +517,7 @@ function add_option( $option, $value = '', $deprecated = '', $autoload = 'yes' )
      */
     do_action( 'add_option', $option, $value );
 
+    /** @noinspection SqlDialectInspection */
     $result = $wpdb->query( $wpdb->prepare( "INSERT INTO `$wpdb->options` (`option_name`, `option_value`, `autoload`) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE `option_name` = VALUES(`option_name`), `option_value` = VALUES(`option_value`), `autoload` = VALUES(`autoload`)", $option, $serialized_value, $autoload ) );
     if ( ! $result ) {
         return false;
@@ -702,16 +708,17 @@ function wp_load_alloptions( $force_cache = false ) {
 /**
  * Retrieve an option value for the current network based on name of option.
  *
+ * @param string $option     Name of the option to retrieve. Expected to not be SQL-escaped.
+ * @param mixed  $default    Optional. Value to return if the option doesn't exist. Default false.
+ * @param bool   $deprecated Whether to use cache. Multisite only. Always set to true.
+ * @return mixed Value set for the option.
+ * @noinspection PhpUnusedParameterInspection
  * @since 2.8.0
  * @since 4.4.0 The `$use_cache` parameter was deprecated.
  * @since 4.4.0 Modified into wrapper for get_network_option()
  *
  * @see get_network_option()
  *
- * @param string $option     Name of the option to retrieve. Expected to not be SQL-escaped.
- * @param mixed  $default    Optional. Value to return if the option doesn't exist. Default false.
- * @param bool   $deprecated Whether to use cache. Multisite only. Always set to true.
- * @return mixed Value set for the option.
  */
 function get_site_option( $option, $default = false, $deprecated = true ) {
     return get_network_option( null, $option, $default );
@@ -736,7 +743,7 @@ function add_site_option( $option, $value ) {
 }
 
 /**
- * Removes a option by name for the current network.
+ * Removes an option by name for the current network.
  *
  * @since 2.8.0
  * @since 4.4.0 Modified into wrapper for delete_network_option()
@@ -1466,5 +1473,261 @@ function set_site_transient( $transient, $value, $expiration = 0 ) {
     return $result;
 }
 
+/**
+ * Protects WordPress special option from being modified.
+ *
+ * Will die if $option is in protected list. Protected options are 'alloptions'
+ * and 'notoptions' options.
+ *
+ * @since 2.2.0
+ *
+ * @param string $option Option name.
+ */
+function wp_protect_special_option( $option ) {
+    if ( 'alloptions' === $option || 'notoptions' === $option ) {
+        wp_die(
+          sprintf(
+          /* translators: %s: Option name. */
+            __( '%s is a protected WP option and may not be modified' ),
+            esc_html( $option )
+          )
+        );
+    }
+}
 
+/**
+ * Deletes a transient.
+ *
+ * @since 2.8.0
+ *
+ * @param string $transient Transient name. Expected to not be SQL-escaped.
+ * @return bool True if the transient was deleted, false otherwise.
+ */
+function delete_transient( $transient ) {
+
+    /**
+     * Fires immediately before a specific transient is deleted.
+     *
+     * The dynamic portion of the hook name, `$transient`, refers to the transient name.
+     *
+     * @since 3.0.0
+     *
+     * @param string $transient Transient name.
+     */
+    do_action( "delete_transient_{$transient}", $transient );
+
+    if ( wp_using_ext_object_cache() || wp_installing() ) {
+        $result = wp_cache_delete( $transient, 'transient' );
+    } else {
+        $option_timeout = '_transient_timeout_' . $transient;
+        $option         = '_transient_' . $transient;
+        $result         = delete_option( $option );
+
+        if ( $result ) {
+            delete_option( $option_timeout );
+        }
+    }
+
+    if ( $result ) {
+
+        /**
+         * Fires after a transient is deleted.
+         *
+         * @since 3.0.0
+         *
+         * @param string $transient Deleted transient name.
+         */
+        do_action( 'deleted_transient', $transient );
+    }
+
+    return $result;
+}
+
+/**
+ * Retrieves the value of a transient.
+ *
+ * If the transient does not exist, does not have a value, or has expired,
+ * then the return value will be false.
+ *
+ * @since 2.8.0
+ *
+ * @param string $transient Transient name. Expected to not be SQL-escaped.
+ * @return mixed Value of transient.
+ */
+function get_transient( $transient ) {
+
+    /**
+     * Filters the value of an existing transient before it is retrieved.
+     *
+     * The dynamic portion of the hook name, `$transient`, refers to the transient name.
+     *
+     * Returning a truthy value from the filter will effectively short-circuit retrieval
+     * and return the passed value instead.
+     *
+     * @since 2.8.0
+     * @since 4.4.0 The `$transient` parameter was added
+     *
+     * @param mixed  $pre_transient The default value to return if the transient does not exist.
+     *                              Any value other than false will short-circuit the retrieval
+     *                              of the transient, and return that value.
+     * @param string $transient     Transient name.
+     */
+    $pre = apply_filters( "pre_transient_{$transient}", false, $transient );
+
+    if ( false !== $pre ) {
+        return $pre;
+    }
+
+    if ( wp_using_ext_object_cache() || wp_installing() ) {
+        $value = wp_cache_get( $transient, 'transient' );
+    } else {
+        $transient_option = '_transient_' . $transient;
+        if ( ! wp_installing() ) {
+            // If option is not in alloptions, it is not autoloaded and thus has a timeout.
+            $alloptions = wp_load_alloptions();
+            if ( ! isset( $alloptions[ $transient_option ] ) ) {
+                $transient_timeout = '_transient_timeout_' . $transient;
+                $timeout           = get_option( $transient_timeout );
+                if ( false !== $timeout && $timeout < time() ) {
+                    delete_option( $transient_option );
+                    delete_option( $transient_timeout );
+                    $value = false;
+                }
+            }
+        }
+
+        if ( ! isset( $value ) ) {
+            $value = get_option( $transient_option );
+        }
+    }
+
+    /**
+     * Filters an existing transient's value.
+     *
+     * The dynamic portion of the hook name, `$transient`, refers to the transient name.
+     *
+     * @since 2.8.0
+     * @since 4.4.0 The `$transient` parameter was added
+     *
+     * @param mixed  $value     Value of transient.
+     * @param string $transient Transient name.
+     */
+    return apply_filters( "transient_{$transient}", $value, $transient );
+}
+
+/**
+ * Sets/updates the value of a transient.
+ *
+ * You do not need to serialize values. If the value needs to be serialized,
+ * then it will be serialized before it is set.
+ *
+ * @since 2.8.0
+ *
+ * @param string $transient  Transient name. Expected to not be SQL-escaped.
+ *                           Must be 172 characters or fewer in length.
+ * @param mixed  $value      Transient value. Must be serializable if non-scalar.
+ *                           Expected to not be SQL-escaped.
+ * @param int    $expiration Optional. Time until expiration in seconds. Default 0 (no expiration).
+ * @return bool True if the value was set, false otherwise.
+ */
+function set_transient( $transient, $value, $expiration = 0 ) {
+
+    $expiration = (int) $expiration;
+
+    /**
+     * Filters a specific transient before its value is set.
+     *
+     * The dynamic portion of the hook name, `$transient`, refers to the transient name.
+     *
+     * @since 3.0.0
+     * @since 4.2.0 The `$expiration` parameter was added.
+     * @since 4.4.0 The `$transient` parameter was added.
+     *
+     * @param mixed  $value      New value of transient.
+     * @param int    $expiration Time until expiration in seconds.
+     * @param string $transient  Transient name.
+     */
+    $value = apply_filters( "pre_set_transient_{$transient}", $value, $expiration, $transient );
+
+    /**
+     * Filters the expiration for a transient before its value is set.
+     *
+     * The dynamic portion of the hook name, `$transient`, refers to the transient name.
+     *
+     * @since 4.4.0
+     *
+     * @param int    $expiration Time until expiration in seconds. Use 0 for no expiration.
+     * @param mixed  $value      New value of transient.
+     * @param string $transient  Transient name.
+     */
+    $expiration = apply_filters( "expiration_of_transient_{$transient}", $expiration, $value, $transient );
+
+    if ( wp_using_ext_object_cache() || wp_installing() ) {
+        $result = wp_cache_set( $transient, $value, 'transient', $expiration );
+    } else {
+        $transient_timeout = '_transient_timeout_' . $transient;
+        $transient_option  = '_transient_' . $transient;
+
+        if ( false === get_option( $transient_option ) ) {
+            $autoload = 'yes';
+            if ( $expiration ) {
+                $autoload = 'no';
+                add_option( $transient_timeout, time() + $expiration, '', 'no' );
+            }
+            $result = add_option( $transient_option, $value, '', $autoload );
+        } else {
+            // If expiration is requested, but the transient has no timeout option,
+            // delete, then re-create transient rather than update.
+            $update = true;
+
+            if ( $expiration ) {
+                if ( false === get_option( $transient_timeout ) ) {
+                    delete_option( $transient_option );
+                    add_option( $transient_timeout, time() + $expiration, '', 'no' );
+                    $result = add_option( $transient_option, $value, '', 'no' );
+                    $update = false;
+                } else {
+                    update_option( $transient_timeout, time() + $expiration );
+                }
+            }
+
+            if ( $update ) {
+                $result = update_option( $transient_option, $value );
+            }
+        }
+    }
+
+    /** @noinspection PhpUndefinedVariableInspection */
+    if ( $result ) {
+
+        /**
+         * Fires after the value for a specific transient has been set.
+         *
+         * The dynamic portion of the hook name, `$transient`, refers to the transient name.
+         *
+         * @since 3.0.0
+         * @since 3.6.0 The `$value` and `$expiration` parameters were added.
+         * @since 4.4.0 The `$transient` parameter was added.
+         *
+         * @param mixed  $value      Transient value.
+         * @param int    $expiration Time until expiration in seconds.
+         * @param string $transient  The name of the transient.
+         */
+        do_action( "set_transient_{$transient}", $value, $expiration, $transient );
+
+        /**
+         * Fires after the value for a transient has been set.
+         *
+         * @since 3.0.0
+         * @since 3.6.0 The `$value` and `$expiration` parameters were added.
+         *
+         * @param string $transient  The name of the transient.
+         * @param mixed  $value      Transient value.
+         * @param int    $expiration Time until expiration in seconds.
+         */
+        do_action( 'setted_transient', $transient, $value, $expiration );
+    }
+
+    return $result;
+}
 

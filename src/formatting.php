@@ -745,3 +745,339 @@ function absint( $maybeint ) {
 function esc_url_raw( $url, $protocols = null ) {
     return esc_url( $url, $protocols, 'db' );
 }
+
+/**
+ * Parses a string into variables to be stored in an array.
+ *
+ * @since 2.2.1
+ *
+ * @param string $string The string to be parsed.
+ * @param array  $array  Variables will be stored in this array.
+ */
+function wp_parse_str( $string, &$array ) {
+    parse_str( (string) $string, $array );
+
+    /**
+     * Filters the array of variables derived from a parsed string.
+     *
+     * @since 2.2.1
+     *
+     * @param array $array The array populated with variables.
+     */
+    $array = apply_filters( 'wp_parse_str', $array );
+}
+
+/**
+ * Escape single quotes, htmlspecialchar " < > &, and fix line endings.
+ *
+ * Escapes text strings for echoing in JS. It is intended to be used for inline JS
+ * (in a tag attribute, for example onclick="..."). Note that the strings have to
+ * be in single quotes. The {@see 'js_escape'} filter is also applied here.
+ *
+ * @since 2.8.0
+ *
+ * @param string $text The text to be escaped.
+ * @return string Escaped text.
+ */
+function esc_js( $text ) {
+    /** @noinspection PhpUndefinedFunctionInspection */
+    $safe_text = wp_check_invalid_utf8( $text );
+    /** @noinspection PhpUndefinedFunctionInspection */
+    $safe_text = _wp_specialchars( $safe_text, ENT_COMPAT );
+    $safe_text = preg_replace( '/&#(x)?0*(?(1)27|39);?/i', "'", stripslashes( $safe_text ) );
+    $safe_text = str_replace( "\r", '', $safe_text );
+    $safe_text = str_replace( "\n", '\\n', addslashes( $safe_text ) );
+    /**
+     * Filters a string cleaned and escaped for output in JavaScript.
+     *
+     * Text passed to esc_js() is stripped of invalid or special characters,
+     * and properly slashed for output.
+     *
+     * @since 2.0.6
+     *
+     * @param string $safe_text The text after it has been escaped.
+     * @param string $text      The text prior to being escaped.
+     */
+    return apply_filters( 'js_escape', $safe_text, $text );
+}
+
+/**
+ * Adds slashes to a string or recursively adds slashes to string within an array.
+ *
+ * This should be used when preparing data for core API that expects slashed data.
+ * This should not be used to escape data going directly into an SQL query.
+ *
+ * @since 3.6.0
+ * @since 5.5.0 Non-string values are left untouched.
+ *
+ * @param string|array $value String or array of data to slash.
+ * @return string|array Slashed `$value`.
+ */
+function wp_slash( $value ) {
+    if ( is_array( $value ) ) {
+        $value = array_map( 'wp_slash', $value );
+    }
+
+    if ( is_string( $value ) ) {
+        return addslashes( $value );
+    }
+
+    return $value;
+}
+
+/**
+ * Removes slashes from a string or recursively removes slashes from strings within an array.
+ *
+ * This should be used to remove slashes from data passed to core API that
+ * expects data to be unslashed.
+ *
+ * @since 3.6.0
+ *
+ * @param string|array $value String or array of data to unslash.
+ * @return string|array Unslashed `$value`.
+ */
+function wp_unslash( $value ) {
+    return stripslashes_deep( $value );
+}
+
+/**
+ * Navigates through an array, object, or scalar, and removes slashes from the values.
+ *
+ * @since 2.0.0
+ *
+ * @param mixed $value The value to be stripped.
+ * @return mixed Stripped value.
+ */
+function stripslashes_deep( $value ) {
+    return map_deep( $value, 'stripslashes_from_strings_only' );
+}
+
+/**
+ * Maps a function to all non-iterable elements of an array or an object.
+ *
+ * This is similar to `array_walk_recursive()` but acts upon objects too.
+ *
+ * @since 4.4.0
+ *
+ * @param mixed    $value    The array, object, or scalar.
+ * @param callable $callback The function to map onto $value.
+ * @return mixed The value with the callback applied to all non-arrays and non-objects inside it.
+ */
+function map_deep( $value, $callback ) {
+    if ( is_array( $value ) ) {
+        foreach ( $value as $index => $item ) {
+            $value[ $index ] = map_deep( $item, $callback );
+        }
+    } elseif ( is_object( $value ) ) {
+        $object_vars = get_object_vars( $value );
+        foreach ( $object_vars as $property_name => $property_value ) {
+            $value->$property_name = map_deep( $property_value, $callback );
+        }
+    } else {
+        $value = call_user_func( $callback, $value );
+    }
+
+    return $value;
+}
+
+/**
+ * Sanitizes a string key.
+ *
+ * Keys are used as internal identifiers. Lowercase alphanumeric characters,
+ * dashes, and underscores are allowed.
+ *
+ * @since 3.0.0
+ *
+ * @param string $key String key.
+ * @return string Sanitized key.
+ */
+function sanitize_key( $key ) {
+    $sanitized_key = '';
+
+    if ( is_scalar( $key ) ) {
+        $sanitized_key = strtolower( $key );
+        $sanitized_key = preg_replace( '/[^a-z0-9_\-]/', '', $sanitized_key );
+    }
+
+    /**
+     * Filters a sanitized key string.
+     *
+     * @since 3.0.0
+     *
+     * @param string $sanitized_key Sanitized key.
+     * @param string $key           The key prior to sanitization.
+     */
+    return apply_filters( 'sanitize_key', $sanitized_key, $key );
+}
+
+/**
+ * Sanitizes a string into a slug, which can be used in URLs or HTML attributes.
+ *
+ * By default, converts accent characters to ASCII characters and further
+ * limits the output to alphanumeric characters, underscore (_) and dash (-)
+ * through the {@see 'sanitize_title'} filter.
+ *
+ * If `$title` is empty and `$fallback_title` is set, the latter will be used.
+ *
+ * @since 1.0.0
+ *
+ * @param string $title          The string to be sanitized.
+ * @param string $fallback_title Optional. A title to use if $title is empty. Default empty.
+ * @param string $context        Optional. The operation for which the string is sanitized.
+ *                               When set to 'save', the string runs through remove_accents().
+ *                               Default 'save'.
+ * @return string The sanitized string.
+ */
+function sanitize_title( $title, $fallback_title = '', $context = 'save' ) {
+    $raw_title = $title;
+
+    if ( 'save' === $context ) {
+        /** @noinspection PhpUndefinedFunctionInspection */
+        $title = remove_accents( $title );
+    }
+
+    /**
+     * Filters a sanitized title string.
+     *
+     * @since 1.2.0
+     *
+     * @param string $title     Sanitized title.
+     * @param string $raw_title The title prior to sanitization.
+     * @param string $context   The context for which the title is being sanitized.
+     */
+    $title = apply_filters( 'sanitize_title', $title, $raw_title, $context );
+
+    if ( '' === $title || false === $title ) {
+        $title = $fallback_title;
+    }
+
+    return $title;
+}
+
+/**
+ * Escapes data for use in a MySQL query.
+ *
+ * Usually you should prepare queries using wpdb::prepare().
+ * Sometimes, spot-escaping is required or useful. One example
+ * is preparing an array for use in an IN clause.
+ *
+ * NOTE: Since 4.8.3, '%' characters will be replaced with a placeholder string,
+ * this prevents certain SQLi attacks from taking place. This change in behaviour
+ * may cause issues for code that expects the return value of esc_sql() to be useable
+ * for other purposes.
+ *
+ * @since 2.8.0
+ *
+ * @global wpdb $wpdb WordPress database abstraction object.
+ *
+ * @param string|array $data Unescaped data
+ * @return string|array Escaped data
+ */
+function esc_sql( $data ) {
+    global $wpdb;
+    return $wpdb->_escape( $data );
+}
+
+/**
+ * i18n friendly version of basename()
+ *
+ * @since 3.1.0
+ *
+ * @param string $path   A path.
+ * @param string $suffix If the filename ends in suffix this will also be cut off.
+ * @return string
+ */
+function wp_basename( $path, $suffix = '' ) {
+    return urldecode( basename( str_replace( array( '%2F', '%5C' ), '/', urlencode( $path ) ), $suffix ) );
+}
+
+/**
+ * Sanitizes an HTML classname to ensure it only contains valid characters.
+ *
+ * Strips the string down to A-Z,a-z,0-9,_,-. If this results in an empty
+ * string then it will return the alternative value supplied.
+ *
+ * @todo Expand to support the full range of CDATA that a class attribute can contain.
+ *
+ * @since 2.8.0
+ *
+ * @param string $class    The classname to be sanitized
+ * @param string $fallback Optional. The value to return if the sanitization ends up as an empty string.
+ *  Defaults to an empty string.
+ * @return string The sanitized value
+ */
+function sanitize_html_class( $class, $fallback = '' ) {
+    // Strip out any %-encoded octets.
+    $sanitized = preg_replace( '|%[a-fA-F0-9][a-fA-F0-9]|', '', $class );
+
+    // Limit to A-Z, a-z, 0-9, '_', '-'.
+    $sanitized = preg_replace( '/[^A-Za-z0-9_-]/', '', $sanitized );
+
+    if ( '' === $sanitized && $fallback ) {
+        return sanitize_html_class( $fallback );
+    }
+    /**
+     * Filters a sanitized HTML class string.
+     *
+     * @since 2.8.0
+     *
+     * @param string $sanitized The sanitized HTML class.
+     * @param string $class     HTML class before sanitization.
+     * @param string $fallback  The fallback string.
+     */
+    return apply_filters( 'sanitize_html_class', $sanitized, $class, $fallback );
+}
+
+/**
+ * Add leading zeros when necessary.
+ *
+ * If you set the threshold to '4' and the number is '10', then you will get
+ * back '0010'. If you set the threshold to '4' and the number is '5000', then you
+ * will get back '5000'.
+ *
+ * Uses sprintf to append the amount of zeros based on the $threshold parameter
+ * and the size of the number. If the number is large enough, then no zeros will
+ * be appended.
+ *
+ * @since 0.71
+ *
+ * @param int $number     Number to append zeros to if not greater than threshold.
+ * @param int $threshold  Digit places number needs to be to not have zeros added.
+ * @return string Adds leading zeros to number if needed.
+ */
+function zeroise( $number, $threshold ) {
+    return sprintf( '%0' . $threshold . 's', $number );
+}
+
+/**
+ * Navigates through an array, object, or scalar, and encodes the values to be used in a URL.
+ *
+ * @since 2.2.0
+ *
+ * @param mixed $value The array or string to be encoded.
+ * @return mixed The encoded value.
+ */
+function urlencode_deep( $value ) {
+    return map_deep( $value, 'urlencode' );
+}
+
+/**
+ * Converts lone & characters into `&#038;` (a.k.a. `&amp;`)
+ *
+ * @since 0.71
+ *
+ * @param string $content    String of characters to be converted.
+ * @param string $deprecated Not used.
+ * @return string Converted string.
+ */
+function convert_chars( $content, $deprecated = '' ) {
+    if ( ! empty( $deprecated ) ) {
+        _deprecated_argument( __FUNCTION__, '0.71' );
+    }
+
+    if ( strpos( $content, '&' ) !== false ) {
+        $content = preg_replace( '/&([^#])(?![a-z1-4]{1,8};)/i', '&#038;$1', $content );
+    }
+
+    return $content;
+}
