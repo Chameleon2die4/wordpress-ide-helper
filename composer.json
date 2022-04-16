@@ -1,0 +1,12 @@
+{
+    "name": "chameleon2die4/wordpress-ide-helper",
+    "description": "Small package with wordpress core functions for IDE support. For developing themes, plugins and libs.",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Chameleon2die4",
+            "email": "chameleon2die4@gmail.com"
+        }
+    ],
+    "require": {}
+}
