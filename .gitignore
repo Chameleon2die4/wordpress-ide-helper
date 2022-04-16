@@ -1,2 +1,6 @@
 # Project directory
 .idea
+
+# Vendors
+vendor/
+composer.lock
