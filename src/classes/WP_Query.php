@@ -1,4 +1,13 @@
-<?php /** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
+<?php /** @noinspection GrazieInspection */
+/** @noinspection PhpUndefinedVariableInspection */
+/** @noinspection PhpUnusedParameterInspection */
+/** @noinspection SpellCheckingInspection */
+/** @noinspection PhpUnused */
+/** @noinspection PhpUnusedLocalVariableInspection */
+/** @noinspection PhpCastIsUnnecessaryInspection */
+/** @noinspection RegExpSimplifiable */
+/** @noinspection SqlNoDataSourceInspection */
+/** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
 
 /**
  * Query API: WP_Query class
@@ -1022,6 +1031,7 @@ class WP_Query {
             $this->queried_object = get_page_by_path( $qv['pagename'] );
 
             if ( $this->queried_object && 'attachment' === $this->queried_object->post_type ) {
+                /** @noinspection RegExpUnnecessaryNonCapturingGroup */
                 if ( preg_match( '/^[^%]*%(?:postname)%/', get_option( 'permalink_structure' ) ) ) {
                     // See if we also have a post with the same slug.
                     $post = get_page_by_path( $qv['pagename'], OBJECT, 'post' );
@@ -1532,7 +1542,7 @@ class WP_Query {
 
             // If the search terms contain negative queries, don't bother ordering by sentence matches.
             $like = '';
-            if ( ! preg_match( '/(?:\s|^)\-/', $q['s'] ) ) {
+            if ( ! preg_match( '/(?:\s|^)-/', $q['s'] ) ) {
                 $like = '%' . $wpdb->esc_like( $q['s'] ) . '%';
             }
 
@@ -3321,7 +3331,7 @@ class WP_Query {
         // Bail if posts is an empty array. Continue if posts is an empty string,
         // null, or false to accommodate caching plugins that fill posts later.
         if ( $q['no_found_rows'] || ( is_array( $this->posts ) && ! $this->posts ) ) {
-            return;
+            return null;
         }
 
         if ( ! empty( $limits ) ) {
@@ -4370,12 +4380,12 @@ class WP_Query {
         }
 
         if ( ! $post ) {
-            return;
+            return null;
         }
 
         $elements = $this->generate_postdata( $post );
         if ( false === $elements ) {
-            return;
+            return null;
         }
 
         $id           = $elements['id'];
@@ -4489,9 +4499,7 @@ class WP_Query {
             $multipage = 0;
         }
 
-        $elements = compact( 'id', 'authordata', 'currentday', 'currentmonth', 'page', 'pages', 'multipage', 'more', 'numpages' );
-
-        return $elements;
+        return compact( 'id', 'authordata', 'currentday', 'currentmonth', 'page', 'pages', 'multipage', 'more', 'numpages' );
     }
     /**
      * After looping through a nested query, this function
