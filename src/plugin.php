@@ -783,3 +783,27 @@ function remove_all_filters( $hook_name, $priority = false ) {
 function has_action( $hook_name, $callback = false ) {
     return has_filter( $hook_name, $callback );
 }
+
+/**
+ * Get the filesystem directory path (with trailing slash) for the plugin __FILE__ passed in.
+ *
+ * @since 2.8.0
+ *
+ * @param string $file The filename of the plugin (__FILE__).
+ * @return string the filesystem path of the directory that contains the plugin.
+ */
+function plugin_dir_path( $file ) {
+    return trailingslashit( dirname( $file ) );
+}
+
+/**
+ * Get the URL directory path (with trailing slash) for the plugin __FILE__ passed in.
+ *
+ * @since 2.8.0
+ *
+ * @param string $file The filename of the plugin (__FILE__).
+ * @return string the URL path of the directory that contains the plugin.
+ */
+function plugin_dir_url( $file ) {
+    return trailingslashit( plugins_url( '', $file ) );
+}
