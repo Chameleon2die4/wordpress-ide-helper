@@ -1081,3 +1081,255 @@ function convert_chars( $content, $deprecated = '' ) {
 
     return $content;
 }
+
+/**
+ * Sanitizes a URL for database or redirect usage.
+ *
+ * @since 2.3.1
+ * @since 2.8.0 Deprecated in favor of esc_url_raw().
+ * @since 5.9.0 Restored (un-deprecated).
+ *
+ * @see esc_url()
+ *
+ * @param string   $url       The URL to be cleaned.
+ * @param string[] $protocols Optional. An array of acceptable protocols.
+ *                            Defaults to return value of wp_allowed_protocols().
+ * @return string The cleaned URL after esc_url() is run with the 'db' context.
+ */
+function sanitize_url( $url, $protocols = null ) {
+    return esc_url( $url, $protocols, 'db' );
+}
+
+/**
+ * WordPress implementation of PHP sprintf() with filters.
+ *
+ * @since 2.5.0
+ * @since 5.3.0 Formalized the existing and already documented `...$args` parameter
+ *              by adding it to the function signature.
+ *
+ * @link https://www.php.net/sprintf
+ *
+ * @param string $pattern The string which formatted args are inserted.
+ * @param mixed  ...$args Arguments to be formatted into the $pattern string.
+ * @return string The formatted string.
+ */
+function wp_sprintf( $pattern, ...$args ) {
+    $len       = strlen( $pattern );
+    $start     = 0;
+    $result    = '';
+    $arg_index = 0;
+    while ( $len > $start ) {
+        // Last character: append and break.
+        if ( strlen( $pattern ) - 1 == $start ) {
+            $result .= substr( $pattern, -1 );
+            break;
+        }
+
+        // Literal %: append and continue.
+        if ( '%%' === substr( $pattern, $start, 2 ) ) {
+            $start  += 2;
+            $result .= '%';
+            continue;
+        }
+
+        // Get fragment before next %.
+        $end = strpos( $pattern, '%', $start + 1 );
+        if ( false === $end ) {
+            $end = $len;
+        }
+        $fragment = substr( $pattern, $start, $end - $start );
+
+        // Fragment has a specifier.
+        if ( '%' === $pattern[ $start ] ) {
+            // Find numbered arguments or take the next one in order.
+            if ( preg_match( '/^%(\d+)\$/', $fragment, $matches ) ) {
+                $index    = $matches[1] - 1; // 0-based array vs 1-based sprintf() arguments.
+                $arg      = isset( $args[ $index ] ) ? $args[ $index ] : '';
+                $fragment = str_replace( "%{$matches[1]}$", '%', $fragment );
+            } else {
+                $arg = isset( $args[ $arg_index ] ) ? $args[ $arg_index ] : '';
+                ++$arg_index;
+            }
+
+            /**
+             * Filters a fragment from the pattern passed to wp_sprintf().
+             *
+             * If the fragment is unchanged, then sprintf() will be run on the fragment.
+             *
+             * @since 2.5.0
+             *
+             * @param string $fragment A fragment from the pattern.
+             * @param string $arg      The argument.
+             */
+            $_fragment = apply_filters( 'wp_sprintf', $fragment, $arg );
+            if ( $_fragment != $fragment ) {
+                $fragment = $_fragment;
+            } else {
+                $fragment = sprintf( $fragment, (string) $arg );
+            }
+        }
+
+        // Append to result and move to next fragment.
+        $result .= $fragment;
+        $start   = $end;
+    }
+
+    return $result;
+}
+
+/**
+ * Sanitizes a string from user input or from the database.
+ *
+ * - Checks for invalid UTF-8,
+ * - Converts single `<` characters to entities
+ * - Strips all tags
+ * - Removes line breaks, tabs, and extra whitespace
+ * - Strips octets
+ *
+ * @param string $str String to sanitize.
+ * @return string Sanitized string.
+ * @noinspection PhpRedundantOptionalArgumentInspection
+ * @see wp_check_invalid_utf8()
+ * @see wp_strip_all_tags()
+ *
+ * @since 2.9.0
+ *
+ * @see sanitize_textarea_field()
+ */
+function sanitize_text_field( $str ) {
+    $filtered = _sanitize_text_fields( $str, false );
+
+    /**
+     * Filters a sanitized text field string.
+     *
+     * @since 2.9.0
+     *
+     * @param string $filtered The sanitized string.
+     * @param string $str      The string prior to being sanitized.
+     */
+    return apply_filters( 'sanitize_text_field', $filtered, $str );
+}
+
+/**
+ * Internal helper function to sanitize a string from user input or from the database.
+ *
+ * @param string $str           String to sanitize.
+ * @param bool   $keep_newlines Optional. Whether to keep newlines. Default: false.
+ * @return string Sanitized string.
+ * @noinspection PhpUndefinedFunctionInspection
+ * @since 4.7.0
+ * @access private
+ *
+ * @noinspection PhpRedundantOptionalArgumentInspection
+ */
+function _sanitize_text_fields( $str, $keep_newlines = false ) {
+    if ( is_object( $str ) || is_array( $str ) ) {
+        return '';
+    }
+
+    $str = (string) $str;
+
+    $filtered = wp_check_invalid_utf8( $str );
+
+    if ( strpos( $filtered, '<' ) !== false ) {
+        $filtered = wp_pre_kses_less_than( $filtered );
+        // This will strip extra whitespace for us.
+        $filtered = wp_strip_all_tags( $filtered, false );
+
+        // Use HTML entities in a special case to make sure no later
+        // newline stripping stage could lead to a functional tag.
+        $filtered = str_replace( "<\n", "&lt;\n", $filtered );
+    }
+
+    if ( ! $keep_newlines ) {
+        $filtered = preg_replace( '/[\r\n\t ]+/', ' ', $filtered );
+    }
+    $filtered = trim( $filtered );
+
+    $found = false;
+    while ( preg_match( '/%[a-f0-9]{2}/i', $filtered, $match ) ) {
+        $filtered = str_replace( $match[0], '', $filtered );
+        $found    = true;
+    }
+
+    if ( $found ) {
+        // Strip out the whitespace that may now exist after removing the octets.
+        $filtered = trim( preg_replace( '/ +/', ' ', $filtered ) );
+    }
+
+    return $filtered;
+}
+
+/**
+ * Properly strips all HTML tags including script and style
+ *
+ * This differs from strip_tags() because it removes the contents of
+ * the `<script>` and `<style>` tags. E.g. `strip_tags( '<script>something</script>' )`
+ * will return 'something'. wp_strip_all_tags will return ''
+ *
+ * @since 2.9.0
+ *
+ * @param string $string        String containing HTML tags
+ * @param bool   $remove_breaks Optional. Whether to remove left over line breaks and white space chars
+ * @return string The processed string.
+ */
+function wp_strip_all_tags( $string, $remove_breaks = false ) {
+    $string = preg_replace( '@<(script|style)[^>]*?>.*?</\\1>@si', '', $string );
+    $string = strip_tags( $string );
+
+    if ( $remove_breaks ) {
+        $string = preg_replace( '/[\r\n\t ]+/', ' ', $string );
+    }
+
+    return trim( $string );
+}
+
+/**
+ * Sanitizes a hex color.
+ *
+ * Returns either '', a 3 or 6 digit hex color (with #), or nothing.
+ * For sanitizing values without a #, see sanitize_hex_color_no_hash().
+ *
+ * @since 3.4.0
+ *
+ * @param string $color
+ * @return string|void
+ */
+function sanitize_hex_color( $color ) {
+    if ( '' === $color ) {
+        return '';
+    }
+
+    // 3 or 6 hex digits, or the empty string.
+    if ( preg_match( '|^#([A-Fa-f0-9]{3}){1,2}$|', $color ) ) {
+        return $color;
+    }
+}
+
+/**
+ * Sanitizes a multiline string from user input or from the database.
+ *
+ * The function is like sanitize_text_field(), but preserves
+ * new lines (\n) and other whitespace, which are legitimate
+ * input in textarea elements.
+ *
+ * @see sanitize_text_field()
+ *
+ * @since 4.7.0
+ *
+ * @param string $str String to sanitize.
+ * @return string Sanitized string.
+ */
+function sanitize_textarea_field( $str ) {
+    $filtered = _sanitize_text_fields( $str, true );
+
+    /**
+     * Filters a sanitized textarea field string.
+     *
+     * @since 4.7.0
+     *
+     * @param string $filtered The sanitized string.
+     * @param string $str      The string prior to being sanitized.
+     */
+    return apply_filters( 'sanitize_textarea_field', $filtered, $str );
+}
