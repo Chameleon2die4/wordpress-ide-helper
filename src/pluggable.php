@@ -1,4 +1,5 @@
-<?php /** @noinspection PhpIncludeInspection */
+<?php /** @noinspection PhpCastIsUnnecessaryInspection */
+/** @noinspection PhpIncludeInspection */
 /** @noinspection PhpUndefinedClassInspection */
 /** @noinspection PhpUndefinedNamespaceInspection */
 /** @noinspection RegExpSimplifiable */
@@ -1156,5 +1157,46 @@ if ( ! function_exists( 'wp_mail' ) ) :
 
             return false;
         }
+    }
+endif;
+
+if ( ! function_exists( 'get_user_by' ) ) :
+    /**
+     * Retrieves user info by a given field.
+     *
+     * @since 2.8.0
+     * @since 4.4.0 Added 'ID' as an alias of 'id' for the `$field` parameter.
+     *
+     * @global WP_User $current_user The current user object which holds the user data.
+     *
+     * @param string     $field The field to retrieve the user with. id | ID | slug | email | login.
+     * @param int|string $value A value for $field. A user ID, slug, email address, or login name.
+     * @return WP_User|false WP_User object on success, false on failure.
+     */
+    function get_user_by( $field, $value ) {
+        $userdata = WP_User::get_data_by( $field, $value );
+
+        if ( ! $userdata ) {
+            return false;
+        }
+
+        $user = new WP_User;
+        $user->init( $userdata );
+
+        return $user;
+    }
+endif;
+
+if ( ! function_exists( 'get_userdata' ) ) :
+    /**
+     * Retrieves user info by user ID.
+     *
+     * @since 0.71
+     *
+     * @param int $user_id User ID
+     * @return WP_User|false WP_User object on success, false on failure.
+     */
+    function get_userdata( $user_id ) {
+        return get_user_by( 'id', $user_id );
     }
 endif;
