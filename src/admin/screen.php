@@ -1,4 +1,6 @@
-<?php /** @noinspection SpellCheckingInspection */
+<?php /** @noinspection PhpUnused */
+/** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
+/** @noinspection SpellCheckingInspection */
 /**
  * WordPress Administration Screen API.
  *

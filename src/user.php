@@ -1,5 +1,10 @@
-<?php /** @noinspection SqlResolve */
+<?php /** @noinspection GrazieInspection */
+/** @noinspection SpellCheckingInspection */
+/** @noinspection PhpCastIsUnnecessaryInspection */
+/** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
+/** @noinspection SqlResolve */
 /** @noinspection SqlNoDataSourceInspection */
+
 /**
  * Core User API
  *
@@ -11,7 +16,7 @@
  * Authenticates and logs a user in with 'remember' capability.
  *
  * The credentials are an array that has 'user_login', 'user_password', and
- * 'remember' indices. If the credentials is not given, then the log in form
+ * 'remember' indices. If the credentials is not given, then the login form
  * will be assumed and used if set.
  *
  * The various authentication cookies will be set by this function and will be
@@ -3617,7 +3622,7 @@ function _wp_get_current_user() {
  * Sends a confirmation request email when a change of user email address is attempted.
  *
  * @since 3.0.0
- * @since 4.9.0 This function was moved from wp-admin/includes/ms.php so it's no longer Multisite specific.
+ * @since 4.9.0 This function was moved from wp-admin/includes/ms.php, so it's no longer Multisite specific.
  *
  * @global WP_Error $errors WP_Error object.
  */
@@ -3728,7 +3733,7 @@ All at ###SITENAME###
  * after email address change.
  *
  * @since 3.0.0
- * @since 4.9.0 This function was moved from wp-admin/includes/ms.php so it's no longer Multisite specific.
+ * @since 4.9.0 This function was moved from wp-admin/includes/ms.php, so it's no longer Multisite specific.
  *
  * @global string $pagenow The filename of the current screen.
  */
